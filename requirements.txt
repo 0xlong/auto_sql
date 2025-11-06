@@ -17,3 +17,9 @@ pyarrow>=14.0.0
 
 # python-dotenv - Load environment variables from .env file
 python-dotenv>=1.0.0
+
+# LangChain - Framework for building LLM applications
+langchain>=0.1.0
+
+# LangChain Google GenAI - Integration for Google's Gemini models
+langchain-google-genai>=0.0.6
