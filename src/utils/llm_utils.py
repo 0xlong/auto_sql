@@ -1,56 +1,18 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 import re
+import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-def clean_sql_response(response: str) -> str:
-    """
-    Removes markdown code block markers from SQL response.
-    
-    LLMs sometimes wrap SQL queries in markdown code blocks like:
-    ```sql
-    SELECT * FROM table;
-    ```
-    
-    This function strips those markers and returns just the SQL query.
-    
-    Args:
-        response: Raw response string that may contain markdown formatting
-        
-    Returns:
-        Clean SQL query string without markdown code block markers
-    """
-    # Remove markdown code block markers (```sql, ```SQL, ```, etc.)
-    # This regex pattern matches:
-    # - Triple backticks (```)
-    # - Optional language identifier (sql, SQL, etc.) - case insensitive
-    # - Optional whitespace and newline
-    # Then captures everything (non-greedy) until the closing triple backticks
-    # The pattern uses non-greedy matching (.*?) to capture only the content between markers
-    # re.DOTALL flag makes . match newlines too, so multi-line SQL queries work correctly
-    
-    # Pattern explanation:
-    # ```(?:sql|SQL)? - matches opening ``` with optional sql/SQL identifier
-    # \s*\n? - matches optional whitespace and optional newline after opening marker
-    # (.*?) - captures the SQL content (non-greedy, so it stops at first closing marker)
-    # \n?\s*``` - matches optional newline, optional whitespace, and closing ```
-    pattern = r'```(?:sql|SQL)?\s*\n?(.*?)\n?\s*```'
-    
-    # Replace the entire code block with just the captured content
-    cleaned = re.sub(pattern, r'\1', response, flags=re.DOTALL)
-    
-    # Strip any leading/trailing whitespace that might remain
-    cleaned = cleaned.strip()
-    
-    return cleaned
-
-
-def generate_response(user_query: str, api_key: str, db_schema: str, few_shot_examples: str) -> str:
+def generate_sql_query(user_query: str, api_key: str, db_schema: str, few_shot_examples: str) -> str:
     """
     Simple LLM generation function using LangChain with prompt template.
     
     Args:
-        user_input: The input text from the user
+        user_query: The input text from the user
         api_key: Your Google AI API key
         
     Returns:
@@ -58,7 +20,7 @@ def generate_response(user_query: str, api_key: str, db_schema: str, few_shot_ex
     """
     # Initialize the LLM model (using Google's Gemini as it's free and simple)
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+        model="gemini-2.5-pro",
         google_api_key=api_key,
         temperature=0.5  # Controls randomness (0=deterministic, 1=creative)
     )
@@ -75,7 +37,12 @@ def generate_response(user_query: str, api_key: str, db_schema: str, few_shot_ex
     The SQL query should be secure and will not expose any sensitive data.
     The SQL query should be optimized for the database schema.
     The SQL query should be optimized for the user query.
-    
+    If user query does not make sense, return an message "Please provide a more specific query".
+    If user query does not explicitly contain dates, assume the most recent date period that makes sense for the query.
+    Add an explicit alias for every selected expression. Never return unnamed columns. Alias cannot be named "hash".
+    Access tables or view with bigquery-public-data.goog_blockchain_ethereum_mainnet_us.XXX where XXX is the table or view name.
+    TIMESTAMP_SUB function does not directly support subtracting MONTH intervals from a TIMESTAMP.
+
     IMPORTANT: Return ONLY the SQL query text. Do NOT include markdown code blocks (```sql or ```).
     Do NOT wrap the query in any formatting. Return the raw SQL query only.
     
@@ -99,9 +66,40 @@ def generate_response(user_query: str, api_key: str, db_schema: str, few_shot_ex
     
     # Execute the chain: format prompt with user_input, then generate response
     response = chain.invoke({"db_schema": db_schema, "few_shot_examples": few_shot_examples, "user_query": user_query})
+
+    logger.info(f"Generated SQL query: {response}")
+
+    return response.content
+
+
+def generate_ai_answer(user_query: str, results_df: pd.DataFrame, api_key: str) -> str:
+    """
+    Generate an AI answer including user query and query results context.
+    """
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        google_api_key=api_key,
+        temperature=0.5
+    )
     
-    # Clean the response to remove any markdown code block markers
-    # This is a safety measure in case the LLM still includes them despite the prompt instructions
-    cleaned_response = clean_sql_response(response.content)
+    prompt = """
+    You are a crypto data analyst. You have experience and knowledge in blockchain data analysis.
+    You are given a user query and a results dataframe. You need to summarize results take into account user query and results.
+    User query: {user_query}
+    Results: {results_df}
+    The answer should be in a natural language format. 
+    Be specific and to the point.
+    Do not present data from result_df in the answer.
+    Use markdown formatting for tables and lists."""
+
+    prompt_template = PromptTemplate(
+        input_variables=["user_query", "results_df"],
+        template=prompt
+    )
+    
+    chain = prompt_template | llm
+    
+    response = chain.invoke({"user_query": user_query, "results_df": results_df})
     
     return response.content
+
