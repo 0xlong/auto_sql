@@ -9,6 +9,9 @@ google-cloud-bigquery>=3.13.0
 # Pandas - Data manipulation and analysis library
 pandas>=2.1.0
 
+# NumPy - Numerical computing library (pinned to <2.0 for compatibility with Streamlit and other dependencies)
+numpy<2.0.0
+
 # DB-dtypes - Required for proper BigQuery data type handling
 db-dtypes>=1.1.1
 

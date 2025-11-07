@@ -1,10 +1,61 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
-import re
+import os
+import json
 import pandas as pd
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Get the absolute path to the project root directory
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Cache for LLM instances to avoid recreating them on every function call
+# Dictionary structure: {(model_name, api_key): llm_instance}
+# This prevents unnecessary initialization overhead and maintains connection pools
+# The cache persists for the lifetime of the Python process (across all Streamlit reruns)
+_llm_cache = {}
+
+
+def _get_llm_instance(model: str, api_key: str, temperature: float) -> ChatGoogleGenerativeAI:
+    """
+    Get or create a cached LLM instance to avoid recreating clients on every call.
+    
+    This function implements a simple caching strategy:
+    - First call: Creates a new LLM instance and stores it in the cache
+    - Subsequent calls: Returns the existing instance from cache
+    
+    Why this matters:
+    - Creating LLM instances has initialization overhead (authentication, config setup)
+    - Reusing instances is more efficient and maintains connection pools
+    - The cache key uses (model, api_key) to handle different models/credentials
+    
+    Args:
+        model: The model name (e.g., "gemini-2.5-flash-lite")
+        api_key: Your Google AI API key
+        temperature: Controls randomness (0=deterministic, 1=creative)
+        
+    Returns:
+        ChatGoogleGenerativeAI: Cached or newly created LLM instance
+    """
+    # Create a cache key based on model and API key to uniquely identify this LLM configuration
+    # Temperature is not included in the key as it's typically consistent per model
+    cache_key = (model, api_key)
+    
+    # Check if we already have an instance for this configuration
+    if cache_key not in _llm_cache:
+        # Cache miss: Create a new LLM instance and store it in the cache
+        logger.info(f"Creating new LLM instance for model: {model}")
+        _llm_cache[cache_key] = ChatGoogleGenerativeAI(
+            model=model,
+            google_api_key=api_key,
+            temperature=temperature
+        )
+    else:
+        # Cache hit: Reuse the existing instance
+        logger.debug(f"Reusing cached LLM instance for model: {model}")
+    
+    return _llm_cache[cache_key]
 
 
 def generate_sql_query(user_query: str, api_key: str, db_schema: str, few_shot_examples: str) -> str:
@@ -18,11 +69,12 @@ def generate_sql_query(user_query: str, api_key: str, db_schema: str, few_shot_e
     Returns:
         Generated response string from the LLM
     """
-    # Initialize the LLM model (using Google's Gemini as it's free and simple)
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-pro",
-        google_api_key=api_key,
-        temperature=0.5  # Controls randomness (0=deterministic, 1=creative)
+    # Get or create a cached LLM instance instead of creating a new one every time
+    # This reuses the same client across multiple function calls for better performance
+    llm = _get_llm_instance(
+        model="gemini-2.5-flash-lite",
+        api_key=api_key,
+        temperature=0.5
     )
     
     # Create a prompt template string with placeholders for LangChain variables
@@ -76,9 +128,11 @@ def generate_ai_answer(user_query: str, results_df: pd.DataFrame, api_key: str) 
     """
     Generate an AI answer including user query and query results context.
     """
-    llm = ChatGoogleGenerativeAI(
+    # Get or create a cached LLM instance to avoid recreating the client
+    # This uses the same caching mechanism as generate_sql_query for consistency
+    llm = _get_llm_instance(
         model="gemini-2.5-flash",
-        google_api_key=api_key,
+        api_key=api_key,
         temperature=0.5
     )
     
@@ -88,9 +142,10 @@ def generate_ai_answer(user_query: str, results_df: pd.DataFrame, api_key: str) 
     User query: {user_query}
     Results: {results_df}
     The answer should be in a natural language format. 
+    No introduction sentence.
     Be specific and to the point.
-    Do not present data from result_df in the answer.
-    Use markdown formatting for tables and lists."""
+    If date was not specified in user query, assume the most recent date period that makes sense for the query and write in answer that date was not specified so latest date period was used.
+    """
 
     prompt_template = PromptTemplate(
         input_variables=["user_query", "results_df"],
@@ -103,3 +158,39 @@ def generate_ai_answer(user_query: str, results_df: pd.DataFrame, api_key: str) 
     
     return response.content
 
+def save_successful_query(query_name: str, query_sql: str, expected_result: pd.DataFrame, notes: str) -> str:
+    """
+    Save successful query as example in eth_mainnet_sql_fewshots.json file
+    """
+    logger.info(f"Saving successful query: {query_name} to eth_mainnet_sql_fewshots.json file")
+
+    # load few shot examples from file
+    with open(os.path.join(PROJECT_ROOT, "data", "prompt", "eth_mainnet_sql_fewshots.json"), "r") as file:
+        few_shot_examples = json.load(file)
+    
+    # check if query already in examples
+    if any(example["query_name"] == query_name for example in few_shot_examples):
+        logger.info(f"Query {query_name} already exists in few shot examples. Skipping save.")
+
+    # Get column names as a list of strings
+    columns = expected_result.columns.tolist()
+    
+    # Convert DataFrame rows to list of lists with native Python types
+    rows = expected_result.head(5).astype(str).values.tolist()
+    
+    # add new query to few shot examples
+    few_shot_examples.append({
+        "query_name": query_name,
+        "query_sql": query_sql,
+        "expected_result": {
+            "columns": columns, 
+            "rows": rows,
+            "notes": notes
+        }
+    })
+    
+    # save few shot examples to file with indentation for readability
+    with open(os.path.join(PROJECT_ROOT, "data", "prompt", "eth_mainnet_sql_fewshots.json"), "w", encoding="utf-8") as file:
+        json.dump(few_shot_examples, file, indent=4, ensure_ascii=False)
+    
+    logger.info(f"Saved successful query: {query_name} to eth_mainnet_sql_fewshots.json file")
