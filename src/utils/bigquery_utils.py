@@ -243,4 +243,3 @@ def bigquery_sqlrun_details(query_job):
     logger.info("\n" + "="*80)
     logger.info(f"{current_timestamp} - END OF QUERY JOB ANALYSIS")
     logger.info("="*80 + "\n")
-

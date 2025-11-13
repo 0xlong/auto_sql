@@ -69,6 +69,7 @@ if st.session_state.client is not None:
                                                         "show me the average gas price by day for october", 
                                                         "show me the number of blocks created by day for october",
                                                         "show me the last 10 transactions in August 2025"], key="user_input_example")
+        st.write("")
         user_query = st.text_input(label="What would you like to find on Ethereum blockchain?", value=user_input_example, label_visibility="collapsed")
         st.session_state.user_query = user_query
         st.session_state.results_df = None
@@ -131,7 +132,7 @@ if st.session_state.client is not None:
     if st.session_state["results_df"] is not None and not st.session_state["results_df"].empty:
         
         # Results summary section - always visible when results exist
-        with st.status("Results Summary") as status_box_3:
+        with st.status("Data Summary") as status_box_3:
             st.dataframe(st.session_state["results_df"], use_container_width=True, height=500, hide_index=True)
             
             # Save results to csv file
@@ -141,7 +142,7 @@ if st.session_state.client is not None:
                 st.success("Results exported to CSV file")
         
         # Query AI answer section - always visible when results exist
-        with st.status("Summary", expanded=True) as status_box_2:
+        with st.status("AI Summary", expanded=True) as status_box_2:
             # Generate AI answer using the stored user_query from session state
             ai_answer = llm_utils.generate_ai_answer(
                 st.session_state.get("user_query", ""), 

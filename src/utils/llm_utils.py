@@ -89,7 +89,7 @@ def generate_sql_query(user_query: str, api_key: str, db_schema: str, few_shot_e
     The SQL query should be secure and will not expose any sensitive data.
     The SQL query should be optimized for the database schema.
     The SQL query should be optimized for the user query.
-    If user query does not make sense, return an message "Please provide a more specific query".
+    If user query does not make sense, return an message "Please provide more specific request".
     If user query does not explicitly contain dates, assume the most recent date period that makes sense for the query.
     Add an explicit alias for every selected expression. Never return unnamed columns. Alias cannot be named "hash".
     Access tables or view with bigquery-public-data.goog_blockchain_ethereum_mainnet_us.XXX where XXX is the table or view name.
