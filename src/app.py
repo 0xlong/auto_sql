@@ -193,16 +193,12 @@ if st.session_state.client is not None:
             st.dataframe(st.session_state["results_df"], use_container_width=True, height=500, hide_index=True)
             
             # Save results to csv file in data/sql_query_results directory
-            export_to_csv_clicked = st.button("Export to CSV", type="primary", use_container_width=True, key="export_to_csv_button")
-            
-            if export_to_csv_clicked:
-
+            def export_to_csv():
                 filename = f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
                 filepath = SQL_QUERY_RESULTS_DIR / filename
-                
-                # Save DataFrame to CSV file without row index column
                 st.session_state["results_df"].to_csv(filepath, index=False)
-                st.info(f"Results exported to: {filepath}")
+            st.button("Export to CSV", type="primary", use_container_width=True, key="export_to_csv_button", on_click=export_to_csv)
+            
         
         # Query AI answer section - always visible when results exist
         with st.status("AI Summary", expanded=True) as status_box_2:
