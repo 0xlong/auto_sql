@@ -1,14 +1,14 @@
-# Auto SQL - Natural Language to BigQuery SQL
+# Auto SQL - Natural Language to BigQuery SQL (NL2SQL)
 
-Streamlit web app that converts natural language queries into BigQuery SQL for Ethereum blockchain data analysis using Google Gemini LLM.
+Web app that converts natural language queries into SQL using [BigQuery Ethereum blockchain database](https://docs.cloud.google.com/blockchain-analytics/docs/example-ethereum) with Google Gemini LLM models.
 
 ## Features
 
 - Natural language to SQL conversion
-- Query Ethereum mainnet data on BigQuery
-- AI-generated result summaries
+- Query Ethereum mainnet data on BigQuery dataset
+- AI-generated result summaries (with chosen LLMs)
 - Automatic query learning (few-shot examples)
-- CSV export and cost tracking
+- CSV export
 
 ## Quick Start
 
@@ -52,16 +52,16 @@ streamlit run src/app.py
 ```
 auto_sql/
 ├── src/
-│   ├── app.py                 # Main Streamlit app
-│   ├── config.py              # Configuration
+│   ├── app.py                               # Main Streamlit app
+│   ├── config.py                            # Configuration
 │   └── utils/
-│       ├── bigquery_utils.py  # BigQuery client & execution
-│       └── llm_utils.py       # LLM SQL generation & summaries
+│       ├── bigquery_utils.py                # BigQuery client & execution
+│       └── llm_utils.py                     # LLM SQL generation & summaries
 ├── data/
 │   └── prompt/
-│       ├── eth_mainnet_db_schema.yaml    # Database schema
-│       └── eth_mainnet_sql_fewshots.json # Example queries
-└── tests/                     # Unit & integration tests
+│       ├── eth_mainnet_db_schema.yaml       # Database schema from Ethereum Bigquery docs
+│       └── eth_mainnet_sql_fewshots.json    # Example queries
+└── tests/                                   # Unit & integration tests
 ```
 
 ## Technologies
