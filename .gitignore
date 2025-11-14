@@ -29,6 +29,7 @@ env/
 # Credentials - NEVER commit these!
 *.json
 !package.json
+!data/prompt/eth_mainnet_sql_fewshots.json
 
 # Streamlit
 .streamlit/

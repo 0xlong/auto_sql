@@ -10,6 +10,12 @@ Web app that converts natural language queries into SQL using [BigQuery Ethereum
 - Automatic query learning (few-shot examples)
 - CSV export
 
+# Architecture Design sources
+
+- https://arxiv.org/pdf/2408.05109v5
+- https://bird-bench.github.io/
+- https://spider2-sql.github.io/
+
 ## Quick Start
 
 ### Prerequisites
@@ -17,7 +23,7 @@ Web app that converts natural language queries into SQL using [BigQuery Ethereum
 - Python 3.8+
 - Google Cloud Project with BigQuery API enabled
 - BigQuery service account (read-only access)
-- Google AI API key ([Get it here](https://makersuite.google.com/app/apikey))
+- Google AI API key
 
 ### Installation
 

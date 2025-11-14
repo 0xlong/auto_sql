@@ -22,6 +22,40 @@ logging.basicConfig(
 GOOGLE_LLM_API_KEY = os.getenv("GOOGLE_LLM_API_KEY")
 GOOGLE_BIGQUERY_CREDENTIALS = os.getenv("GOOGLE_BIGQUERY_CREDENTIALS")
 
+# ============================================================================
+# API KEY VALIDATION - Validate credentials before use to prevent runtime errors
+# ============================================================================
+def validate_api_keys():
+    """
+    Validate that required API keys are present and not empty.
+    
+    This function checks that both GOOGLE_LLM_API_KEY and GOOGLE_BIGQUERY_CREDENTIALS
+    are set in the environment. If either is missing, it raises a ValueError with
+    a clear error message explaining what needs to be configured.
+    
+    Returns:
+        None: Raises ValueError if validation fails
+        
+    Raises:
+        ValueError: If GOOGLE_LLM_API_KEY is missing or empty
+        ValueError: If GOOGLE_BIGQUERY_CREDENTIALS is missing or empty
+    """
+    # Check if LLM API key is missing or empty
+    # This key is required for generating SQL queries and AI summaries
+    if not GOOGLE_LLM_API_KEY or not GOOGLE_LLM_API_KEY.strip():
+        raise ValueError(
+            "GOOGLE_LLM_API_KEY is not set or is empty. "
+            "Please set it in your .env file or environment variables."
+        )
+    
+    # Check if BigQuery credentials are missing or empty
+    # These credentials are required for connecting to BigQuery
+    if not GOOGLE_BIGQUERY_CREDENTIALS or not GOOGLE_BIGQUERY_CREDENTIALS.strip():
+        raise ValueError(
+            "GOOGLE_BIGQUERY_CREDENTIALS is not set or is empty. "
+            "Please set it in your .env file or environment variables."
+        )
+
 # BIGQUERY CONFIGURATION
 BIGQUERY_QUERY_TIMEOUT = 60       # Seconds before query times out
 BIGQUERY_MAX_RESULTS = 1000       # Maximum rows to return (safety limit)

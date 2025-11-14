@@ -1,0 +1,694 @@
+[
+    {
+        "query_name": "View the first and last block indexed",
+        "query_sql": "SELECT\n    min(block_number) as First_block,\n    max(block_number) as Newest_block,\n    count(block_number) as Total_number_of_blocks\nFROM `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.blocks`",
+        "expected_result": {
+            "columns": [
+                "First_block",
+                "Newest_block",
+                "Total_number_of_blocks"
+            ],
+            "rows": [
+                [
+                    "0",
+                    "17665654",
+                    "17665655"
+                ]
+            ],
+            "notes": "Results are from a specific point in time (July 2023) and 'Newest_block' and 'Total_number_of_blocks' will continuously increase."
+        }
+    },
+    {
+        "query_name": "Visualize the number of transactions by day over the last 6 months",
+        "query_sql": "SELECT\n  TIMESTAMP_TRUNC(block_timestamp, DAY) AS timestamp1,\n  COUNT(1) AS txn_count\nFROM `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.transactions`\nWHERE block_timestamp >= CAST(DATE_SUB(CURRENT_DATE(), INTERVAL 6 MONTH) AS TIMESTAMP)\nGROUP BY timestamp1\nORDER BY timestamp1",
+        "expected_result": {
+            "columns": [
+                "timestamp1",
+                "txn_count"
+            ],
+            "rows": [
+                [
+                    "2023-01-10 00:00:00.000000 UTC",
+                    "1061055"
+                ],
+                [
+                    "2023-01-11 00:00:00.000000 UTC",
+                    "1083178"
+                ],
+                [
+                    "2023-01-12 00:00:00.000000 UTC",
+                    "1085563"
+                ],
+                [
+                    "2023-01-13 00:00:00.000000 UTC",
+                    "1076328"
+                ],
+                [
+                    "...(last 6 months)..."
+                ]
+            ],
+            "notes": "A subset of the full result is shown. The query returns a daily count of transactions for the last 6 months."
+        }
+    },
+    {
+        "query_name": "Top 10 USDC Account Balances",
+        "query_sql": "SELECT\n  account,\n  balance\nFROM\n  `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.token_balances`\nWHERE\n  token_address = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'\nORDER BY\n  balance DESC\nLIMIT\n  10",
+        "expected_result": {
+            "columns": [
+                "account",
+                "balance"
+            ],
+            "rows": [
+                [
+                    "0xcee284f754e854890e311e3280b767f80797180d",
+                    "934249404.099105"
+                ],
+                [
+                    "0x40ec5b33f54e0e8a33a975908c5ba1c14e5bbbdf",
+                    "608860969.753471"
+                ],
+                [
+                    "0x47ac0fb4f2d84898e4d9e7b4dab3c24507a6d503",
+                    "422999999.84"
+                ],
+                [
+                    "0x0a59649758aa4d66e25f08dd01271e891fe52199",
+                    "382469988.743467"
+                ],
+                [
+                    "0xd54f502e184b6b739d7d27a6410a67dc462d69c8",
+                    "335866305.446392"
+                ],
+                [
+                    "0x99c9fc46f92e8a1c0dec1b1747d010903e884be1",
+                    "300569267.063296"
+                ],
+                [
+                    "0xda9ce944a37d218c3302f6b82a094844c6eceb17",
+                    "231000000"
+                ],
+                [
+                    "0x51edf02152ebfb338e03e30d65c15fbf06cc9ecc",
+                    "230000000.000002"
+                ],
+                [
+                    "0x7713974908be4bed47172370115e8b1219f4a5f0",
+                    "218307714.860457"
+                ],
+                [
+                    "0x78605df79524164911c144801f41e9811b7db73d",
+                    "211737271.4"
+                ]
+            ],
+            "notes": "The token_address '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48' is for USDC. Balances are in USDC units. The actual balances change over time."
+        }
+    },
+    {
+        "query_name": "Daily slot utilization",
+        "query_sql": "SELECT\n  DATE(block_timestamp) AS block_date,\n  COUNT(block_number) AS daily_blocks,\n  7200 - COUNT(block_number) AS skipped_slots\nFROM\n  bigquery-public-data.goog_blockchain_ethereum_mainnet_us.blocks\nWHERE\n  DATE(block_timestamp) BETWEEN DATE(\"2022-09-16\") AND CURRENT_DATE(\"UTC\") - 1\nGROUP BY block_date",
+        "expected_result": {
+            "columns": [
+                "block_date",
+                "daily_blocks",
+                "skipped_slots"
+            ],
+            "rows": [
+                [
+                    "2023-06-26",
+                    "7105",
+                    "95"
+                ],
+                [
+                    "2023-06-25",
+                    "7109",
+                    "91"
+                ],
+                [
+                    "2023-06-24",
+                    "7110",
+                    "90"
+                ],
+                [
+                    "2023-06-23",
+                    "7111",
+                    "89"
+                ],
+                [
+                    "2023-06-22",
+                    "7114",
+                    "86"
+                ],
+                [
+                    "2023-06-21",
+                    "7135",
+                    "65"
+                ],
+                [
+                    "2023-06-20",
+                    "7120",
+                    "80"
+                ],
+                [
+                    "2023-06-19",
+                    "7121",
+                    "79"
+                ],
+                [
+                    "2023-06-18",
+                    "7126",
+                    "74"
+                ],
+                [
+                    "2023-06-17",
+                    "7142",
+                    "58"
+                ]
+            ],
+            "notes": "Counts the number of blocks added each calendar day since The Merge (2022-09-16). Since then, there are 7200 slots available for blocks per day, but not every slot is used. Only complete days are counted (up to yesterday)."
+        }
+    },
+    {
+        "query_name": "Total Staked ETH withdrawal (lossless with UDF)",
+        "query_sql": "WITH withdrawals AS (\n  SELECT\n    w.amount_lossless AS amount,\n    DATE(b.block_timestamp) AS block_date\n  FROM\n    bigquery-public-data.goog_blockchain_ethereum_mainnet_us.blocks AS b\n    CROSS JOIN UNNEST(withdrawals) AS w\n)\nSELECT\n  block_date,\n  bqutil.fn.bignumber_div(bqutil.fn.bignumber_sum(ARRAY_AGG(amount)), \"1000000000\") AS eth_withdrawn\nFROM\n  withdrawals\nGROUP BY 1 ORDER BY 1 DESC",
+        "expected_result": {
+            "columns": [
+                "block_date",
+                "eth_withdrawn"
+            ],
+            "rows": [],
+            "notes": "This query calculates total ETH withdrawn per day using lossless UDF functions to handle UINT256 values properly. The amount_lossless field preserves full precision. Results are in ETH units (divided by 10^9)."
+        }
+    },
+    {
+        "query_name": "Total Staked ETH withdrawal (lossy example)",
+        "query_sql": "WITH withdrawals AS (\n  SELECT\n    u.amount AS amount\n  FROM\n    bigquery-public-data.goog_blockchain_ethereum_mainnet_us.blocks\n    CROSS JOIN UNNEST(withdrawals) AS u\n)\nSELECT\n  SUM(withdrawals.amount) / POW(10,9) AS total_eth_withdrawn\nFROM\n  withdrawals",
+        "expected_result": {
+            "columns": [
+                "total_eth_withdrawn"
+            ],
+            "rows": [],
+            "notes": "This is a lossy version that may lose precision for very large UINT256 values due to FLOAT64 conversion. Use the lossless version with UDF functions for accurate results."
+        }
+    },
+    {
+        "query_name": "Earned mining transaction fees since EIP-1559",
+        "query_sql": "WITH tgas AS (\n  SELECT t.block_number, gas_used, effective_gas_price FROM\n    bigquery-public-data.goog_blockchain_ethereum_mainnet_us.receipts AS r\n    JOIN bigquery-public-data.goog_blockchain_ethereum_mainnet_us.transactions AS t\n    ON t.block_number = r.block_number AND t.transaction_hash = r.transaction_hash\n)\nSELECT\n  SUM(CAST(tgas.effective_gas_price - b.base_fee_per_gas AS BIGNUMERIC) * tgas.gas_used)\nFROM\n  bigquery-public-data.goog_blockchain_ethereum_mainnet_us.blocks b JOIN tgas\n  ON b.block_number = tgas.block_number\nWHERE\n  b.block_number >= 12965000",
+        "expected_result": {
+            "columns": [
+                "f0_"
+            ],
+            "rows": [
+                [
+                    "645681358899882340722378"
+                ]
+            ],
+            "notes": "Since EIP-1559 (London hard fork at block 12965000), base fees are burned and miners only earn priority fees. This query computes total priority fees earned by miners. The CAST to BIGNUMERIC is needed to avoid INT64 overflow when doing multiplication."
+        }
+    },
+    {
+        "query_name": "Skipped Beacon Chain slots",
+        "query_sql": "CREATE TEMP FUNCTION SlotNumber(slot_time TIMESTAMP) AS (\n  (SELECT DIV(TIMESTAMP_DIFF(slot_time, \"2020-12-01 12:00:23 UTC\", SECOND), 12))\n);\n\nCREATE TEMP FUNCTION EpochNumber(slot_time TIMESTAMP) AS (\n  (SELECT DIV(SlotNumber(slot_time), 32))\n);\n\nWITH slots AS (\n  SELECT * FROM UNNEST(GENERATE_TIMESTAMP_ARRAY(\"2020-12-01 12:00:23 UTC\", \"2020-12-01 23:59:59 UTC\", INTERVAL 12 SECOND)) AS slot_time\n  UNION ALL\n  SELECT TIMESTAMP(DATETIME(date_part, TIME(time_part))) AS slot_time\n  FROM UNNEST(GENERATE_DATE_ARRAY(\"2020-12-02\", CURRENT_DATE(\"UTC\") - 1)) AS date_part\n  CROSS JOIN\n  UNNEST(GENERATE_TIMESTAMP_ARRAY(\"1970-01-01 00:00:11 UTC\", \"1970-01-01 23:59:59 UTC\", INTERVAL 12 SECOND)) AS time_part\n)\nSELECT\n  EpochNumber(slot_time) AS epoch,\n  SlotNumber(slot_time) AS slot,\n  slot_time,\n  FORMAT(\"https://beaconcha.in/slot/%d\", SlotNumber(slot_time)) AS beaconchain_url\nFROM\n  slots LEFT JOIN bigquery-public-data.goog_blockchain_ethereum_mainnet_us.blocks\n  ON slot_time = block_timestamp\nWHERE\n  block_number IS NULL AND slot_time BETWEEN \"2022-09-15 06:42:59 UTC\" AND CURRENT_TIMESTAMP()\nORDER BY slot_time DESC",
+        "expected_result": {
+            "columns": [
+                "epoch",
+                "slot",
+                "slot_time",
+                "beaconchain_url"
+            ],
+            "rows": [
+                [
+                    "211159",
+                    "6757113",
+                    "2023-06-27 23:42:59 UTC",
+                    "https://beaconcha.in/slot/6757113"
+                ],
+                [
+                    "211159",
+                    "6757088",
+                    "2023-06-27 23:37:59 UTC",
+                    "https://beaconcha.in/slot/6757088"
+                ],
+                [
+                    "211158",
+                    "6757061",
+                    "2023-06-27 23:32:35 UTC",
+                    "https://beaconcha.in/slot/6757061"
+                ],
+                [
+                    "211145",
+                    "6756660",
+                    "2023-06-27 22:12:23 UTC",
+                    "https://beaconcha.in/slot/6756660"
+                ],
+                [
+                    "211145",
+                    "6756642",
+                    "2023-06-27 22:08:47 UTC",
+                    "https://beaconcha.in/slot/6756642"
+                ],
+                [
+                    "211142",
+                    "6756564",
+                    "2023-06-27 21:53:11 UTC",
+                    "https://beaconcha.in/slot/6756564"
+                ],
+                [
+                    "211136",
+                    "6756379",
+                    "2023-06-27 21:16:11 UTC",
+                    "https://beaconcha.in/slot/6756379"
+                ],
+                [
+                    "211136",
+                    "6756374",
+                    "2023-06-27 21:15:11 UTC",
+                    "https://beaconcha.in/slot/6756374"
+                ],
+                [
+                    "211135",
+                    "6756320",
+                    "2023-06-27 21:04:23 UTC",
+                    "https://beaconcha.in/slot/6756320"
+                ],
+                [
+                    "211132",
+                    "6756225",
+                    "2023-06-27 20:45:23 UTC",
+                    "https://beaconcha.in/slot/6756225"
+                ]
+            ],
+            "notes": "Finds epoch and slot numbers for missing, forked, or otherwise skipped slots since the Beacon Chain upgrade. Uses temp functions to calculate slot and epoch numbers from timestamps. Only shows slots after The Merge (2022-09-15)."
+        }
+    },
+    {
+        "query_name": "USDC token issuance",
+        "query_sql": "CREATE TEMP FUNCTION IFMINT(input STRING, ifTrue ANY TYPE, ifFalse ANY TYPE) AS (\n  CASE\n    WHEN input LIKE \"0x40c10f19%\" THEN ifTrue\n    ELSE ifFalse\n  END\n);\n\nCREATE TEMP FUNCTION USD(input FLOAT64) AS (\n  CAST(input AS STRING FORMAT \"$999,999,999,999\")\n);\n\nSELECT\n  DATE(block_timestamp) AS `Date`,\n  USD(SUM(IFMINT(input, 1, -1) * CAST(CONCAT(\"0x\", LTRIM(SUBSTRING(input, IFMINT(input, 75, 11), 64), \"0\")) AS FLOAT64) / 1000000)) AS `Total Supply Change`\nFROM\n  bigquery-public-data.goog_blockchain_ethereum_mainnet_us.transactions\nWHERE\n  DATE(block_timestamp) BETWEEN \"2023-03-01\" AND \"2023-03-07\"\n  AND to_address = \"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\"\n  AND (\n    input LIKE \"0x42966c68%\"\n    OR input LIKE \"0x40c10f19%\"\n  )\nGROUP BY `Date`\nORDER BY `Date` DESC",
+        "expected_result": {
+            "columns": [
+                "Date",
+                "Total Supply Change"
+            ],
+            "rows": [
+                [
+                    "2023-03-07",
+                    "-$257,914,457"
+                ],
+                [
+                    "2023-03-06",
+                    "-$223,014,422"
+                ],
+                [
+                    "2023-03-05",
+                    "$200,060,388"
+                ],
+                [
+                    "2023-03-04",
+                    "$234,929,175"
+                ],
+                [
+                    "2023-03-03",
+                    "$463,882,301"
+                ],
+                [
+                    "2023-03-02",
+                    "$631,198,459"
+                ],
+                [
+                    "2023-03-01",
+                    "$172,338,818"
+                ]
+            ],
+            "notes": "Analyzes the net issuance of USDC over the first week of March 2023. Uses function signatures to identify mint (0x40c10f19) and burn (0x42966c68) transactions. Positive values indicate net minting, negative values indicate net burning. Note: To include internal transactions, this query should be modified to use the logs table."
+        }
+    },
+    {
+        "query_name": "Top 10 USDC Account Balances (from token transfers)",
+        "query_sql": "WITH Transfers AS (\n  SELECT address token, to_address account, 0 _out, CAST(quantity AS BIGNUMERIC) _in\n  FROM `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.token_transfers`\n  UNION ALL\n  SELECT address token, from_address account, CAST(quantity AS BIGNUMERIC) _out, 0 _in\n  FROM `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.token_transfers`\n)\nSELECT account, (SUM(_in) - SUM(_out)) / 1000000 balance\nFROM Transfers\nWHERE token = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'\nGROUP BY account\nORDER BY balance DESC\nLIMIT 10",
+        "expected_result": {
+            "columns": [
+                "account",
+                "balance"
+            ],
+            "rows": [
+                [
+                    "0xcee284f754e854890e311e3280b767f80797180d",
+                    "934249404.099105"
+                ],
+                [
+                    "0x40ec5b33f54e0e8a33a975908c5ba1c14e5bbbdf",
+                    "608860969.753471"
+                ],
+                [
+                    "0x47ac0fb4f2d84898e4d9e7b4dab3c24507a6d503",
+                    "422999999.84"
+                ],
+                [
+                    "0x0a59649758aa4d66e25f08dd01271e891fe52199",
+                    "382469988.743467"
+                ],
+                [
+                    "0xd54f502e184b6b739d7d27a6410a67dc462d69c8",
+                    "335866305.446392"
+                ],
+                [
+                    "0x99c9fc46f92e8a1c0dec1b1747d010903e884be1",
+                    "300569267.063296"
+                ],
+                [
+                    "0xda9ce944a37d218c3302f6b82a094844c6eceb17",
+                    "231000000"
+                ],
+                [
+                    "0x51edf02152ebfb338e03e30d65c15fbf06cc9ecc",
+                    "230000000.000002"
+                ],
+                [
+                    "0x7713974908be4bed47172370115e8b1219f4a5f0",
+                    "218307714.860457"
+                ],
+                [
+                    "0x78605df79524164911c144801f41e9811b7db73d",
+                    "211737271.4"
+                ]
+            ],
+            "notes": "Calculates USDC balances by aggregating all token transfers (incoming and outgoing) for each account. This method reconstructs balances from transfer history rather than using a pre-computed balances table. Balances are in USDC units (divided by 10^6)."
+        }
+    },
+    {
+        "query_name": "Top 5 most active traders of BAYC tokens",
+        "query_sql": "WITH Transfers AS (\n  SELECT address AS token, to_address AS account, COUNT(*) transfer_count\n  FROM `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.token_transfers`\n  GROUP BY token, account\n  UNION ALL\n  SELECT address AS token, from_address AS account, COUNT(*) transfer_count\n  FROM `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.token_transfers`\n  WHERE from_address != '0x0000000000000000000000000000000000000000'\n  GROUP BY token, account\n)\nSELECT account, SUM(transfer_count) quantity\nFROM Transfers LEFT JOIN `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.accounts` ON account = address\nWHERE NOT is_contract AND token = '0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d'\nGROUP BY account\nORDER BY quantity DESC\nLIMIT 5",
+        "expected_result": {
+            "columns": [
+                "account",
+                "quantity"
+            ],
+            "rows": [
+                [
+                    "0xed2ab4948ba6a909a7751dec4f34f303eb8c7236",
+                    "6036"
+                ],
+                [
+                    "0x020ca66c30bec2c4fe3861a94e4db4a498a35872",
+                    "2536"
+                ],
+                [
+                    "0xd387a6e4e84a6c86bd90c158c6028a58cc8ac459",
+                    "2506"
+                ],
+                [
+                    "0x8ae57a027c63fca8070d1bf38622321de8004c67",
+                    "2162"
+                ],
+                [
+                    "0x721931508df2764fd4f70c53da646cb8aed16ace",
+                    "968"
+                ]
+            ],
+            "notes": "Analyzes which EOAs (Externally Owned Accounts, not contracts) have transferred the most Bored Ape Yacht Club (BAYC) NFTs. The token address '0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d' is for BAYC. The quantity represents the total number of transfers (both sent and received) for each account."
+        }
+    },
+    {
+        "query_name": "Average daily price of WETH in USDC on Uniswap",
+        "query_sql": "With Swaps AS (\n  SELECT block_timestamp, transaction_hash,\n    STRING(args[0]) sender,\n    STRING(args[1]) recipient,\n    SAFE_CAST(STRING(args[2]) AS BIGNUMERIC) amount0,\n    SAFE_CAST(STRING(args[3]) AS BIGNUMERIC) amount1,\n    SAFE_CAST(STRING(args[4]) AS BIGNUMERIC) sqrtPriceX96,\n    CAST(STRING(args[5]) AS BIGNUMERIC) liquidity,\n    CAST(STRING(args[6]) AS INT64) tick\n  FROM `bigquery-public-data.blockchain_analytics_ethereum_mainnet_us.decoded_events`\n  WHERE event_signature = 'Swap(address,address,int256,int256,uint160,uint128,int24)'\n  AND address = '0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640'\n),\nEtherUSDC AS (\n  SELECT block_timestamp,\n    ABS(amount0) / 1000000 usdc_amount,\n    ABS(amount1) / 1000000000000000000 eth_amount,\n    ABS(SAFE_DIVIDE(amount0, amount1)) * 1000000000000 usd_eth\n  FROM Swaps\n)\nSELECT EXTRACT(DATE FROM block_timestamp) `date`, CAST(AVG(usd_eth) AS STRING FORMAT '$9,999.00') `avg_price`, COUNT(*) `swap_count`\nFROM EtherUSDC\nWHERE usdc_amount >= 1.00\nGROUP BY `date`\nORDER BY `date` DESC",
+        "expected_result": {
+            "columns": [
+                "date",
+                "avg_price",
+                "swap_count"
+            ],
+            "rows": [
+                [
+                    "2023-10-03",
+                    "$1,658.24",
+                    "3819"
+                ],
+                [
+                    "2023-10-02",
+                    "$1,704.98",
+                    "5136"
+                ],
+                [
+                    "2023-10-01",
+                    "$1,689.63",
+                    "3723"
+                ],
+                [
+                    "2023-09-30",
+                    "$1,675.90",
+                    "2988"
+                ],
+                [
+                    "2023-09-29",
+                    "$1,665.99",
+                    "4173"
+                ]
+            ],
+            "notes": "Views the average daily swap price in the Uniswap USDC/WETH 0.05% fee pool. Uses decoded events from the blockchain_analytics dataset. amount0 is USDC (6 decimals), amount1 is WETH (18 decimals). Only includes swaps with at least 1 USDC to ignore miniscule swaps. The pool address '0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640' is the USDC/ETH 0.05% pool."
+        }
+    },
+    {
+        "query_name": "Avg gas price by day for october",
+        "query_sql": "SELECT\n  DATE(block_timestamp) AS date,\n  AVG(gas_price) AS average_gas_price_in_wei\nFROM\n  bigquery-public-data.goog_blockchain_ethereum_mainnet_us.transactions\nWHERE\n  EXTRACT(YEAR FROM block_timestamp) = EXTRACT(YEAR FROM CURRENT_DATE()) AND EXTRACT(MONTH FROM block_timestamp) = 10\nGROUP BY\n  date\nORDER BY\n  date",
+        "expected_result": {
+            "columns": [
+                "date",
+                "average_gas_price_in_wei"
+            ],
+            "rows": [
+                [
+                    "2025-10-01",
+                    "1538437790.8534408"
+                ],
+                [
+                    "2025-10-02",
+                    "1489293615.3804379"
+                ],
+                [
+                    "2025-10-03",
+                    "1343145280.6422608"
+                ],
+                [
+                    "2025-10-04",
+                    "878927945.9635789"
+                ],
+                [
+                    "2025-10-05",
+                    "1008529664.3272473"
+                ],
+                [
+                    "2025-10-06",
+                    "1816202033.8937035"
+                ],
+                [
+                    "2025-10-07",
+                    "1734895835.9873223"
+                ],
+                [
+                    "2025-10-08",
+                    "1180911996.7986445"
+                ],
+                [
+                    "2025-10-09",
+                    "1436954358.2985156"
+                ],
+                [
+                    "2025-10-10",
+                    "18202669950.99523"
+                ],
+                [
+                    "2025-10-11",
+                    "4097660823.53015"
+                ],
+                [
+                    "2025-10-12",
+                    "1671545966.1437929"
+                ],
+                [
+                    "2025-10-13",
+                    "1494701114.5696106"
+                ],
+                [
+                    "2025-10-14",
+                    "1662172109.7569883"
+                ],
+                [
+                    "2025-10-15",
+                    "1455371761.5835395"
+                ],
+                [
+                    "2025-10-16",
+                    "1663317576.8133032"
+                ],
+                [
+                    "2025-10-17",
+                    "2959400371.081008"
+                ],
+                [
+                    "2025-10-18",
+                    "933441069.3015335"
+                ],
+                [
+                    "2025-10-19",
+                    "995222902.949596"
+                ],
+                [
+                    "2025-10-20",
+                    "1041918238.6251019"
+                ],
+                [
+                    "2025-10-21",
+                    "1267298477.349076"
+                ],
+                [
+                    "2025-10-22",
+                    "1155038828.3545065"
+                ],
+                [
+                    "2025-10-23",
+                    "1030895648.8831357"
+                ],
+                [
+                    "2025-10-24",
+                    "1118361019.9931755"
+                ],
+                [
+                    "2025-10-25",
+                    "896052946.3288343"
+                ],
+                [
+                    "2025-10-26",
+                    "944457835.6970378"
+                ],
+                [
+                    "2025-10-27",
+                    "1712261567.6660125"
+                ],
+                [
+                    "2025-10-28",
+                    "1088378434.5658116"
+                ],
+                [
+                    "2025-10-29",
+                    "1258323621.7307386"
+                ],
+                [
+                    "2025-10-30",
+                    "1564502533.930443"
+                ],
+                [
+                    "2025-10-31",
+                    "1177681183.374433"
+                ]
+            ],
+            "notes": "Average gas price by day for october using block_timestamp and gas_price from transactions table. Grouped by date."
+        }
+    },
+    {
+        "query_name": "show me the last 10 transactions in August 2025",
+        "query_sql": "SELECT\n    t.transaction_hash,\n    t.block_number,\n    t.block_timestamp,\n    t.from_address,\n    t.to_address,\n    t.value,\n    t.gas_price\nFROM\n    `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.transactions` AS t\nWHERE\n    t.block_timestamp >= TIMESTAMP(\"2025-08-01 00:00:00 UTC\")\n    AND t.block_timestamp < TIMESTAMP(\"2025-09-01 00:00:00 UTC\")\nORDER BY\n    t.block_timestamp DESC\nLIMIT 10",
+        "expected_result": {
+            "columns": [
+                "transaction_hash",
+                "block_number",
+                "block_timestamp",
+                "from_address",
+                "to_address",
+                "value",
+                "gas_price"
+            ],
+            "rows": [
+                [
+                    "0xc45fccf58afb762f1ca1eb24407c4f95a7e3b8505dcaaad53023913eb0d39489",
+                    "23264565",
+                    "2025-08-31 23:59:59+00:00",
+                    "0x4838b106fce9647bdf1e7877bf73ce8b0bad5f97",
+                    "0xc6093fd9cc143f9f058938868b2df2daf9a91d28",
+                    "48866760163000.00000000000000000000000000000000000000",
+                    "192501897"
+                ],
+                [
+                    "0x03bd349d8c3b98678f645ffd992f22346485055031156e9bf5b135480c183b39",
+                    "23264565",
+                    "2025-08-31 23:59:59+00:00",
+                    "0x4838b106fce9647bdf1e7877bf73ce8b0bad5f97",
+                    "0xc6093fd9cc143f9f058938868b2df2daf9a91d28",
+                    "457988060163000.00000000000000000000000000000000000000",
+                    "192501897"
+                ],
+                [
+                    "0x748d9770073fbcefff8e049612393edff97b090ad7e74d50d30cdac3982f0b56",
+                    "23264565",
+                    "2025-08-31 23:59:59+00:00",
+                    "0x4838b106fce9647bdf1e7877bf73ce8b0bad5f97",
+                    "0xc6093fd9cc143f9f058938868b2df2daf9a91d28",
+                    "24256060163000.00000000000000000000000000000000000000",
+                    "192501897"
+                ],
+                [
+                    "0x74bd971ba2a225f531308fae9ce410000140358cf9cef98cf1564688fd1b9b59",
+                    "23264565",
+                    "2025-08-31 23:59:59+00:00",
+                    "0x4838b106fce9647bdf1e7877bf73ce8b0bad5f97",
+                    "0xc6093fd9cc143f9f058938868b2df2daf9a91d28",
+                    "334022560163000.00000000000000000000000000000000000000",
+                    "192501897"
+                ],
+                [
+                    "0xfb18f72e3fb8e293273359c5779ba097059745b52f129239387382b08d5b3659",
+                    "23264565",
+                    "2025-08-31 23:59:59+00:00",
+                    "0x4838b106fce9647bdf1e7877bf73ce8b0bad5f97",
+                    "0xc6093fd9cc143f9f058938868b2df2daf9a91d28",
+                    "431891560163000.00000000000000000000000000000000000000",
+                    "192501897"
+                ]
+            ],
+            "notes": "The last 10 transactions in August 2025 were all recorded on August 31, 2025, at 23:59:59 UTC, within block number 23264565. The `from_address` information is not available in the provided data.\n\nHere's a summary of these transactions:\n*   **Recipient Addresses:** Seven transactions were sent to `0xc6093fd9cc143f9f058938868b2df2daf9a91d28`. One transaction went to `0x3b7a62c61e65501a9036176be0221896bfbc3739`, and another to `0x1f2f10d1c40777ae1da742455c65828ff36df387`.\n*   **Transferred Value:** The value transferred across these transactions ranged from 0 Ether (for transaction `0x07f3f979ec611a4782246cc3966d8f5f4d81b5492fb3...`) up to approximately 0.000458 Ether (for transaction `0x03bd349d8c3b98678f645ffd992f2234648505503115...`).\n*   **Gas Price:** All 10 transactions had a consistent gas price of 192,501,897 Wei (approximately 0.1925 Gwei).\n\nFor example, transaction `0xc45fccf58afb762f1ca1eb24407c4f95a7e3b8505dca...` transferred approximately 0.0000488 Ether to `0xc6093fd9cc143f9f058938868b2df2daf9a91d28`."
+        }
+    },
+    {
+        "query_name": "show me the number of transactions in the last 30 days",
+        "query_sql": "SELECT\n  COUNT(transaction_hash) AS transaction_count\nFROM\n  `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.transactions`\nWHERE\n  block_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)",
+        "expected_result": {
+            "columns": [
+                "transaction_count"
+            ],
+            "rows": [
+                [
+                    "45660210"
+                ]
+            ],
+            "notes": "The number of transactions in the last 30 days is 45,660,210."
+        }
+    },
+    {
+        "query_name": "show me the number of transactions in the last 69 days",
+        "query_sql": "SELECT\n  COUNT(1) AS total_transactions\nFROM\n  `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.transactions`\nWHERE\n  block_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 69 DAY)",
+        "expected_result": {
+            "columns": [
+                "total_transactions"
+            ],
+            "rows": [
+                [
+                    "108397158"
+                ]
+            ],
+            "notes": "There were 108,397,158 transactions in the last 69 days."
+        }
+    },
+    {
+        "query_name": "show me the number of transactions in the last 33 days",
+        "query_sql": "SELECT\n  COUNT(transaction_hash) AS total_transactions\nFROM\n  `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.transactions`\nWHERE\n  block_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 33 DAY)",
+        "expected_result": {
+            "columns": [
+                "total_transactions"
+            ],
+            "rows": [
+                [
+                    "50276502"
+                ]
+            ],
+            "notes": "There were 50,276,502 transactions in the last 33 days."
+        }
+    }
+]
