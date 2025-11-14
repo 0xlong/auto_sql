@@ -1,24 +1,24 @@
-from datetime import datetime
 import logging
 import os
 import json
 from google.oauth2 import service_account
 from google.cloud import bigquery
-import time
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(message)s')
-logging.Formatter.converter = time.gmtime # Set the timezone to UTC
+# Create logger for this module using standard pattern
+# Logging is centrally configured in config.py - this just creates a module-specific logger
+# All log messages from this module will be prefixed with "utils.bigquery_utils"
 logger = logging.getLogger(__name__)
 
-def authenticate_to_bigquery(credentials_json: str):
+def authenticate_to_bigquery():
     """
-    Authenticate to BigQuery using credentials from environment variables.
+    Authenticate to BigQuery using credentials from environment variable.
     
-    This function loads BigQuery service account credentials from the credentials_json parameter. The credentials should be stored as a JSON string.
+    This function loads BigQuery service account credentials from the GOOGLE_BIGQUERY_CREDENTIALS environment variable.
+    The credentials should be stored as a JSON string in the environment variable.
     
     Why this approach:
     - Keeps sensitive credentials out of the codebase
+    - Ensures credentials are loaded from a secure environment variable source
     
     Returns:
         bigquery.Client: Authenticated BigQuery client object, or None if authentication fails
@@ -26,18 +26,18 @@ def authenticate_to_bigquery(credentials_json: str):
     try:
         # Load the credentials JSON string from environment variable
         # os.getenv() safely retrieves environment variables without crashing if they don't exist
-        credentials_json = os.getenv('GOOGLE_BIGQUERY_CREDENTIALS')
+        bigquery_credentials = os.getenv('GOOGLE_BIGQUERY_CREDENTIALS')
         
         # Check if the environment variable exists and has content
         # This prevents cryptic errors later if credentials are missing
-        if not credentials_json:
+        if not bigquery_credentials:
             logger.error("❌ GOOGLE_BIGQUERY_CREDENTIALS environment variable is not set")
             return None
         
         # Parse the JSON string into a Python dictionary
         # json.loads() converts the string representation into a real dictionary object
         # that we can use with the Google Cloud SDK
-        credentials_dict = json.loads(credentials_json)
+        credentials_dict = json.loads(bigquery_credentials)
         
         # Create Google Cloud credentials object from the dictionary
         # service_account.Credentials is the Google Cloud SDK class that handles authentication
@@ -82,22 +82,19 @@ def bigquery_sqlrun_details(query_job):
     Returns:
         None (prints to console)
     """
-    # Get the current timestamp when this function is called
-    # This helps track when the analysis was performed
-    current_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     logger.info("\n" + "="*80)
-    logger.info(f"{current_timestamp} - BIGQUERY QUERY JOB ANALYSIS - Generated at: ")
+    logger.info("BIGQUERY QUERY JOB ANALYSIS")
     logger.info("\n" + "="*80)
     
     # ============================================================================
     # SECTION 1: JOB IDENTIFICATION & EXECUTION STATUS
     # These fields uniquely identify this specific query execution
     # ============================================================================
-    print("\n=== JOB IDENTIFICATION ===")
-    logger.info(f"{current_timestamp} - Job ID: {query_job.job_id}")
-    logger.info(f"{current_timestamp} - Location: {query_job.location}")
-    logger.info(f"{current_timestamp} - User Email: {query_job.user_email}")
+    logger.info("\n=== JOB IDENTIFICATION ===")
+    logger.info(f"Job ID: {query_job.job_id}")
+    logger.info(f"Location: {query_job.location}")
+    logger.info(f"User Email: {query_job.user_email}")
     
     # ============================================================================
     # EXECUTION STATUS CHECK - This is where BigQuery tells us if query succeeded
@@ -106,7 +103,7 @@ def bigquery_sqlrun_details(query_job):
     # Possible values: "PENDING", "RUNNING", "DONE" (success or failure)
     # State comes directly from BigQuery's job status API response
     job_state = query_job.state
-    logger.info(f"{current_timestamp} - State: {job_state}")
+    logger.info(f"State: {job_state}")
     
     # query_job.errors: List of error dictionaries if query failed
     # This is the PRIMARY source of failure information from BigQuery
@@ -119,94 +116,94 @@ def bigquery_sqlrun_details(query_job):
     if job_state == "DONE" and len(query_errors) == 0:
         # Query completed successfully - no errors in the errors list
         execution_status = "✅ SUCCESS"
-        logger.info(f"{current_timestamp} - Execution Status: {execution_status}")
+        logger.info(f"Execution Status: {execution_status}")
     elif job_state == "DONE" and len(query_errors) > 0:
         # Query completed but with errors - BigQuery returned error details
         execution_status = "❌ FAILED"
-        logger.error(f"{current_timestamp} - Execution Status: {execution_status}")
-        logger.error(f"{current_timestamp} - Error Count: {len(query_errors)}")
+        logger.error(f"Execution Status: {execution_status}")
+        logger.error(f"Error Count: {len(query_errors)}")
         # Log each error from BigQuery's error response
         # Each error is a dict with keys like 'message', 'reason', 'location', etc.
         for i, error in enumerate(query_errors, 1):
             error_message = error.get('message', 'Unknown error')
             error_reason = error.get('reason', 'Unknown reason')
             error_location = error.get('location', 'Unknown location')
-            logger.error(f"{current_timestamp} - Error #{i}: {error_message}")
-            logger.error(f"{current_timestamp} -   Reason: {error_reason}")
-            logger.error(f"{current_timestamp} -   Location: {error_location}")
+            logger.error(f"Error #{i}: {error_message}")
+            logger.error(f"  Reason: {error_reason}")
+            logger.error(f"  Location: {error_location}")
     elif job_state in ["PENDING", "RUNNING"]:
         # Query is still running - status is intermediate
         execution_status = f"⏳ {job_state}"
-        logger.info(f"{current_timestamp} - Execution Status: {execution_status}")
+        logger.info(f"Execution Status: {execution_status}")
     else:
         # Unknown state
         execution_status = f"⚠️ UNKNOWN STATE: {job_state}"
-        logger.warning(f"{current_timestamp} - Execution Status: {execution_status}")
+        logger.warning(f"Execution Status: {execution_status}")
     
     # ============================================================================
     # SECTION 2: TIMING INFORMATION
     # Track when the job was created, started, and completed
     # All timestamps are in UTC timezone from BigQuery
     # ============================================================================
-    print("\n=== TIMING INFORMATION ===")
-    logger.info(f"{current_timestamp} - Created At: {query_job.created}")
-    logger.info(f"{current_timestamp} - Started At: {query_job.started}")
-    logger.info(f"{current_timestamp} - Ended At: {query_job.ended}")
+    logger.info("\n=== TIMING INFORMATION ===")
+    logger.info(f"Created At: {query_job.created}")
+    logger.info(f"Started At: {query_job.started}")
+    logger.info(f"Ended At: {query_job.ended}")
     
     # Calculate total execution time if job has completed
     # This is the wall-clock time from start to finish
     if query_job.started and query_job.ended:
         execution_time = (query_job.ended - query_job.started).total_seconds()
-        logger.info(f"{current_timestamp} - Execution Time: {execution_time:.2f} seconds")
+        logger.info(f"Execution Time: {execution_time:.2f} seconds")
     
     # ============================================================================
     # SECTION 3: STATISTICS (COST & PERFORMANCE)
     # These metrics determine billing and query efficiency
     # ============================================================================
-    print("\n=== STATISTICS ===")
+    logger.info("\n=== STATISTICS ===")
     
     # total_bytes_processed: Actual amount of data scanned by BigQuery
     # This is the primary factor in query cost (BigQuery charges per TB scanned)
     bytes_processed = query_job.total_bytes_processed or 0
-    logger.info(f"{current_timestamp} - Total Bytes Processed: {bytes_processed:,} bytes")
-    logger.info(f"{current_timestamp} -  └─ In GB: {bytes_processed / (1024**3):.4f} GB")
-    logger.info(f"{current_timestamp} -  └─ In TB: {bytes_processed / (1024**4):.6f} TB")
+    logger.info(f"Total Bytes Processed: {bytes_processed:,} bytes")
+    logger.info(f" └─ In GB: {bytes_processed / (1024**3):.4f} GB")
+    logger.info(f" └─ In TB: {bytes_processed / (1024**4):.6f} TB")
     
     # total_bytes_billed: What you actually get charged for
     # BigQuery has a minimum of 10MB per query, so small queries might be billed more than processed
     bytes_billed = query_job.total_bytes_billed or 0
-    logger.info(f"{current_timestamp} - Total Bytes Billed: {bytes_billed:,} bytes")
-    logger.info(f"{current_timestamp} -  └─ In GB: {bytes_billed / (1024**3):.4f} GB")
-    logger.info(f"{current_timestamp} -  └─ In TB: {bytes_billed / (1024**4):.6f} TB")
+    logger.info(f"Total Bytes Billed: {bytes_billed:,} bytes")
+    logger.info(f" └─ In GB: {bytes_billed / (1024**3):.4f} GB")
+    logger.info(f" └─ In TB: {bytes_billed / (1024**4):.6f} TB")
     
     # cache_hit: If True, results came from BigQuery's cache (no charge!)
     # BigQuery caches query results for 24 hours
     cache_status = "Yes ✓ (Free!)" if query_job.cache_hit else "No ✗ (Billed)"
-    logger.info(f"{current_timestamp} - Cache Hit: {cache_status}")
+    logger.info(f"Cache Hit: {cache_status}")
     
     # slot_millis: Computational resources used (slot-milliseconds)
     # A slot is a unit of computational capacity in BigQuery
     # Higher values indicate more complex queries or larger datasets
     if query_job.slot_millis:
-        logger.info(f"{current_timestamp} - Slot Milliseconds: {query_job.slot_millis:,}")
-        logger.info(f"{current_timestamp} -  └─ Slot Seconds: {query_job.slot_millis / 1000:.2f}")
+        logger.info(f"Slot Milliseconds: {query_job.slot_millis:,}")
+        logger.info(f" └─ Slot Seconds: {query_job.slot_millis / 1000:.2f}")
     else:
-        logger.info(f"{current_timestamp} - Slot Milliseconds: N/A")
+        logger.info(f"Slot Milliseconds: N/A")
     
     # ============================================================================
     # SECTION 4: QUERY DETAILS
     # Information about the SQL query itself
     # ============================================================================
-    print("\n=== QUERY DETAILS ===")
-    logger.info(f"{current_timestamp} - Query SQL:\n{query_job.query} \n")
-    logger.info(f"\n{current_timestamp} - Destination Table: {query_job.destination}")
-    logger.info(f"{current_timestamp} - Priority: {query_job.priority}")
+    logger.info("\n=== QUERY DETAILS ===")
+    logger.info(f"Query SQL:\n{query_job.query} \n")
+    logger.info(f"\nDestination Table: {query_job.destination}")
+    logger.info(f"Priority: {query_job.priority}")
     
     # ============================================================================
     # SECTION 5: RESULTS INFORMATION
     # Details about the data returned by the query
     # ============================================================================
-    print("\n=== RESULTS INFORMATION ===")
+    logger.info("\n=== RESULTS INFORMATION ===")
     
     # Only try to get results if query succeeded (no errors)
     # If query failed, query_job.result() will raise an exception
@@ -220,26 +217,26 @@ def bigquery_sqlrun_details(query_job):
             
             # total_rows: Number of rows returned by the query
             # This comes from BigQuery's result metadata after successful execution
-            logger.info(f"{current_timestamp} - Total Rows Returned: {result.total_rows:,}")
+            logger.info(f"Total Rows Returned: {result.total_rows:,}")
             
             # schema: Structure of the result table (column names and data types)
             # Schema comes from BigQuery's result metadata - defines what columns were returned
-            logger.info(f"{current_timestamp} - Schema (Column Definitions):")
+            logger.info(f"Schema (Column Definitions):")
             for i, field in enumerate(result.schema, 1):
                 # field.name: column name
                 # field.field_type: data type (STRING, INTEGER, FLOAT, TIMESTAMP, etc.)
                 # field.mode: NULLABLE, REQUIRED, or REPEATED
-                logger.info(f"{current_timestamp} -   {i}. {field.name} ({field.field_type}, {field.mode})")
+                logger.info(f"  {i}. {field.name} ({field.field_type}, {field.mode})")
         except Exception as e:
             # Catch any exceptions raised by query_job.result()
             # This can happen if BigQuery encounters an error during result retrieval
             # The exception object contains error details from BigQuery's API
-            logger.error(f"{current_timestamp} - Failed to retrieve results: {str(e)}")
-            logger.error(f"{current_timestamp} - Exception Type: {type(e).__name__}")
+            logger.error(f"Failed to retrieve results: {str(e)}")
+            logger.error(f"Exception Type: {type(e).__name__}")
     else:
         # Query failed or is still running - no results available
-        logger.warning(f"{current_timestamp} - Results not available (Status: {execution_status})")
+        logger.warning(f"Results not available (Status: {execution_status})")
     
     logger.info("\n" + "="*80)
-    logger.info(f"{current_timestamp} - END OF QUERY JOB ANALYSIS")
+    logger.info("END OF QUERY JOB ANALYSIS")
     logger.info("="*80 + "\n")

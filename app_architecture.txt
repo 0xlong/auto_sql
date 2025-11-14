@@ -15,3 +15,6 @@ Security:
 + Parameterize user inputs to avoid injection. Treat generated SQL as a template with bound params.
 + Limit allowed statements (no DROP, DELETE, UPDATE, DDL) at the gateway or by policy in decoding.
 + Limit query complexity to avoid resource exhaustion and performance degradation.
+
+Design choices:
+https://bird-bench.github.io/

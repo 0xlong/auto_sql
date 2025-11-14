@@ -1,27 +1,55 @@
 import streamlit as st
-import os
+import logging
 from datetime import datetime
-from dotenv import load_dotenv
+
+from config import SCHEMA_FILE, FEWSHOT_FILE, GOOGLE_LLM_API_KEY, SQL_QUERY_RESULTS_DIR
 from utils import llm_utils
 from utils.bigquery_utils import bigquery_sqlrun_details, authenticate_to_bigquery
 
+# Create logger for app information
+logger = logging.getLogger(__name__)
 
-# Load environment variables from .env file
-load_dotenv()
-GOOGLE_BIGQUERY_CREDENTIALS = os.getenv('GOOGLE_BIGQUERY_CREDENTIALS')
-GOOGLE_LLM_API_KEY = os.getenv("GOOGLE_LLM_API_KEY")
-
-# Get the absolute path to the project root directory
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# Load database schema and few shot examples for prompt template for LLM
-with open(os.path.join(PROJECT_ROOT, "data", "prompt", "eth_mainnet_db_schema.yaml"), "r") as file:
-    db_schema = file.read()
-with open(os.path.join(PROJECT_ROOT, "data", "prompt", "eth_mainnet_sql_fewshots.json"), "r") as file:
-    few_shot_examples = file.read()
-
-# Configure the Streamlit page with minimal settings and title
+# Streamlit page configuration
 st.set_page_config(page_title="DataAnyone")
+
+# Cache the prompt data so it is read only once across all user sessions
+@st.cache_data
+def load_prompt_data():
+    """
+    Load both database schema and few-shot examples from files.
+    This function is cached, so both files are read only once across all user sessions.
+    The cached result (a dictionary containing both values) is reused for all subsequent calls.
+    
+    Returns:
+        dict: Dictionary with keys 'db_schema' and 'few_shot_examples'
+    """
+    logger.info("Loading database schema and few-shot examples from files")
+    
+    # Read the database schema YAML file via centralized config path to keep single source of truth
+    with SCHEMA_FILE.open("r", encoding="utf-8") as file:
+        db_schema = file.read()
+    
+    # Read the few-shot examples JSON file using the same config-managed path
+    with FEWSHOT_FILE.open("r", encoding="utf-8") as file:
+        few_shot_examples = file.read()
+    
+    logger.info("Successfully loaded prompt data")
+    
+    # Return both values in a dictionary for easy access
+    return {
+        "db_schema": db_schema,
+        "few_shot_examples": few_shot_examples
+    }
+
+# Initialize session state for database schema and few-shot examples if not already loaded
+if "db_schema" not in st.session_state or "few_shot_examples" not in st.session_state:
+    # Call the cached function once to get both values
+    # First call reads from files, subsequent calls use cache
+    prompt_data = load_prompt_data()
+    
+    # Store both values in session state
+    st.session_state["db_schema"] = prompt_data["db_schema"]
+    st.session_state["few_shot_examples"] = prompt_data["few_shot_examples"]
 
 # Initialize session state variables for results and errors
 if "results_df" not in st.session_state:
@@ -33,6 +61,7 @@ if "query_error" not in st.session_state:
     st.session_state["query_error"] = None
 
 if "generated_query" not in st.session_state:
+    # Store the generated query to persist across reruns
     st.session_state.generated_query = None
 
 if "user_query" not in st.session_state:
@@ -48,19 +77,27 @@ if "feedback_processed" not in st.session_state:
     st.session_state.feedback_processed = False
 
 if "client" not in st.session_state:
+    # Store the BigQuery client to persist across reruns
     st.session_state.client = None
 
-# QUERY SECTION
-# Only show this section if we have a valid connection (client is not None)
 
 # BIGQUERY CONNECTION
+# establish a connection to BigQuery only once per session - If connection fails, client stays None and we show an error message
 if st.session_state.client is None:
-    client = authenticate_to_bigquery(GOOGLE_BIGQUERY_CREDENTIALS)
-    st.session_state.client = client
+    logger.info("Attempting to authenticate to BigQuery")
+    client = authenticate_to_bigquery() # authenticate to bigquery and create a client
+    
+    if client is not None:
+        st.session_state.client = client # store the client in session state
+        logger.info("BigQuery client stored in session state")
+    else:
+        logger.error("Failed to authenticate to BigQuery")
 else:
-    # Reuse the existing client from session_state instead of creating a new one
+    # Reuse existing client from session_state - avoids repeated authentication on every rerun
     client = st.session_state.client
+    logger.debug("Reusing existing BigQuery client from session state")
 
+# MAIN APP LOGIC
 # if bigquery connection is successful, show the query section
 if st.session_state.client is not None:
 
@@ -76,20 +113,34 @@ if st.session_state.client is not None:
 
     if user_query:
         try:
-            generated_query = llm_utils.generate_sql_query(user_query, GOOGLE_LLM_API_KEY, db_schema=db_schema, few_shot_examples=few_shot_examples)
+            logger.info(f"User query received: {user_query[:100]}...")  # Log first 100 chars to avoid excessive logging
+            
+            # Use the centralized API key from config so every module reads the same credential source
+            generated_query = llm_utils.generate_sql_query(
+                user_query,
+                GOOGLE_LLM_API_KEY,
+                db_schema=st.session_state["db_schema"],
+                few_shot_examples=st.session_state["few_shot_examples"]
+            )
             st.session_state.generated_query = generated_query
+            logger.info("SQL query generated successfully")
         except Exception as e:
+            logger.error(f"Error generating query: {str(e)}", exc_info=True)  # exc_info=True includes stack trace
             st.error(f"❌ Error generating query: {str(e)}")
     
-    if st.session_state.generated_query:
+    if st.session_state.generated_query and user_query:
         with st.status("Generated Query") as status_box:
-            query = st.text_area(label="Generated Query", value=st.session_state.generated_query, height=250, label_visibility="collapsed")
+            
+            # generated query is stored in session state and displayed in text area, user can edit the query and click run button to run the query
+            query = st.text_area(label="Generated Query", value=st.session_state.generated_query, height=250, label_visibility="collapsed", key="query_editor")
 
             # Execute button to run the query
-            execute_clicked = st.button("Execute Query", type="primary", use_container_width=True, key="execute_query_button")
+            run_query_button_clicked = st.button("Run Query", type="primary", use_container_width=True, key="execute_query_button")
 
         # EXECUTION BLOCK: This block only handles executing the query and storing results
-        if execute_clicked:
+        if run_query_button_clicked:
+            logger.info("Execute query button clicked")
+            
             # Reset previous result state so stale data does not linger if the next run fails
             st.session_state["query_error"] = None
             
@@ -99,6 +150,8 @@ if st.session_state.client is not None:
             # Check if user actually entered a query (not just whitespace)
             if query.strip():
                 try:
+                    logger.info(f"Executing SQL query: {query[:100]}...")  # Log first 100 chars
+                    
                     # Execute the SQL query using the BigQuery client. This sends the query to BigQuery servers
                     query_job = client.query(query)
 
@@ -107,6 +160,8 @@ if st.session_state.client is not None:
 
                     # Fetch results and convert to pandas DataFrame. DataFrame is a table-like data structure that's easy to display
                     results_df = query_job.to_dataframe()
+                    
+                    logger.info(f"Query executed successfully, returned {len(results_df)} rows")
 
                     # Persist results so the table can render them even after Streamlit reruns
                     st.session_state["results_df"] = results_df
@@ -117,10 +172,12 @@ if st.session_state.client is not None:
                 except Exception as e:
                     # If query fails (syntax error, permission issue, etc.)
                     # Store error so the results column can surface it and ensure we clear old tables
+                    logger.error(f"Query execution failed: {str(e)}", exc_info=True)  # Include stack trace for debugging
                     st.session_state["results_df"] = None
                     st.session_state["query_error"] = str(e)
                     st.error(f"❌ Query failed: {str(e)}")
             else:
+                logger.warning("User clicked execute button without entering a query")
                 # Warn user if they clicked button without entering a query
                 st.warning("⚠️ Please enter a query first.")
 
@@ -135,40 +192,53 @@ if st.session_state.client is not None:
         with st.status("Data Summary") as status_box_3:
             st.dataframe(st.session_state["results_df"], use_container_width=True, height=500, hide_index=True)
             
-            # Save results to csv file
+            # Save results to csv file in data/sql_query_results directory
             export_to_csv_clicked = st.button("Export to CSV", type="primary", use_container_width=True, key="export_to_csv_button")
+            
             if export_to_csv_clicked:
-                st.session_state["results_df"].to_csv(f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", index=False)
-                st.success("Results exported to CSV file")
+
+                filename = f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                filepath = SQL_QUERY_RESULTS_DIR / filename
+                
+                # Save DataFrame to CSV file without row index column
+                st.session_state["results_df"].to_csv(filepath, index=False)
+                st.info(f"Results exported to: {filepath}")
         
         # Query AI answer section - always visible when results exist
         with st.status("AI Summary", expanded=True) as status_box_2:
             # Generate AI answer using the stored user_query from session state
+            # Reuse the same config-managed API key to keep AI calls consistent with query generation
             ai_answer = llm_utils.generate_ai_answer(
                 st.session_state.get("user_query", ""), 
                 st.session_state["results_df"], 
                 GOOGLE_LLM_API_KEY
             )
             st.write(ai_answer)
-        
-        # Feedback section - always visible when results exist        
-        # Get the current feedback selection (1 for thumbs up, 0 for thumbs down, None if not clicked)
-        selected = st.feedback("thumbs")
-        
-        # Only process feedback if:
-        # 1. A thumb was clicked (selected is 1)
-        # 2. We haven't already processed this feedback (prevents duplicate saves on reruns)
-        if selected == 1 and not st.session_state.feedback_processed:
-            # Mark feedback as processed so we don't save it again on the next rerun
-            st.session_state.feedback_processed = True
             
-            st.write(f"Query name: {st.session_state.get('user_query', '')}")
-            llm_utils.save_successful_query(
-                query_name=st.session_state.get("user_query", ""),
-                query_sql=st.session_state.get("executed_query", ""),
-                expected_result=st.session_state["results_df"],
-                notes=ai_answer
-            )
+            # Store ai_answer in session state so the callback function can access it
+            # Callbacks execute before the main script reruns, so they need data from session state
+            st.session_state["ai_answer"] = ai_answer
+        
+            # Callback function that executes immediately when feedback is clicked, before the script reruns
+            def handle_feedback():
+                
+                if st.session_state.feedback_widget == 1: # if thumbs up was clicked (value is 1)
+                    logger.info("User provided positive feedback, saving query as example")
+                    
+                    # Save the successful query with all relevant data from session state
+                    llm_utils.save_successful_query(
+                        query_name=st.session_state.get("user_query", ""),
+                        query_sql=st.session_state.get("executed_query", ""),
+                        expected_result=st.session_state["results_df"],
+                        notes=st.session_state.get("ai_answer", "")
+                    )
+                    # Mark as processed so we can show a success message on the rerun
+                    st.session_state.feedback_processed = True
+                    logger.info("Query example saved successfully")
+                    user_query = "" # make user_query empty so the user can ask a new question
+                else:
+                    logger.info("User provided negative feedback")
+            selected = st.feedback("thumbs", key="feedback_widget", on_change=handle_feedback)
 
 else:
     # If not connected, show message prompting user to fix credentials setup

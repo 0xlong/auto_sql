@@ -26,3 +26,19 @@ langchain>=0.1.0
 
 # LangChain Google GenAI - Integration for Google's Gemini models
 langchain-google-genai>=0.0.6
+
+# Testing dependencies
+# pytest - Python testing framework
+pytest>=8.0.0
+
+# pytest-mock - Provides a fixture for mocking in pytest
+pytest-mock>=3.12.0
+
+# pytest-cov - Code coverage plugin for pytest
+pytest-cov>=4.1.0
+
+# freezegun - Mocking datetime for testing
+freezegun>=1.4.0
+
+# responses - Mocking HTTP requests for testing
+responses>=0.24.0

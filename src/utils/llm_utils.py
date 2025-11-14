@@ -1,79 +1,92 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import PromptTemplate
-import os
 import json
-import pandas as pd
 import logging
+from typing import Any
 
+import pandas as pd
+from langchain_core.prompts import PromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+from config import FEWSHOT_FILE
+
+# Create logger for llm_utils information
 logger = logging.getLogger(__name__)
 
-# Get the absolute path to the project root directory
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Cache for LLM instances to avoid recreating them on every function call
-# Dictionary structure: {(model_name, api_key): llm_instance}
-# This prevents unnecessary initialization overhead and maintains connection pools
-# The cache persists for the lifetime of the Python process (across all Streamlit reruns)
-_llm_cache = {}
-
-
-def _get_llm_instance(model: str, api_key: str, temperature: float) -> ChatGoogleGenerativeAI:
-    """
-    Get or create a cached LLM instance to avoid recreating clients on every call.
-    
-    This function implements a simple caching strategy:
-    - First call: Creates a new LLM instance and stores it in the cache
-    - Subsequent calls: Returns the existing instance from cache
-    
-    Why this matters:
-    - Creating LLM instances has initialization overhead (authentication, config setup)
-    - Reusing instances is more efficient and maintains connection pools
-    - The cache key uses (model, api_key) to handle different models/credentials
-    
-    Args:
-        model: The model name (e.g., "gemini-2.5-flash-lite")
-        api_key: Your Google AI API key
-        temperature: Controls randomness (0=deterministic, 1=creative)
-        
-    Returns:
-        ChatGoogleGenerativeAI: Cached or newly created LLM instance
-    """
-    # Create a cache key based on model and API key to uniquely identify this LLM configuration
-    # Temperature is not included in the key as it's typically consistent per model
-    cache_key = (model, api_key)
-    
-    # Check if we already have an instance for this configuration
-    if cache_key not in _llm_cache:
-        # Cache miss: Create a new LLM instance and store it in the cache
-        logger.info(f"Creating new LLM instance for model: {model}")
-        _llm_cache[cache_key] = ChatGoogleGenerativeAI(
-            model=model,
-            google_api_key=api_key,
-            temperature=temperature
-        )
-    else:
-        # Cache hit: Reuse the existing instance
-        logger.debug(f"Reusing cached LLM instance for model: {model}")
-    
-    return _llm_cache[cache_key]
-
-
-def generate_sql_query(user_query: str, api_key: str, db_schema: str, few_shot_examples: str) -> str:
+def generate_sql_query(
+    user_query: str, 
+    api_key: str, 
+    db_schema: str, 
+    few_shot_examples: str
+) -> str:
     """
     Simple LLM generation function using LangChain with prompt template.
     
     Args:
-        user_query: The input text from the user
-        api_key: Your Google AI API key
+        user_query (str): The natural language input text from the user
+        api_key (str): Your Google AI API key for authentication
+        db_schema (str): The database schema definition (tables, columns, types)
+        few_shot_examples (str): JSON string containing example queries for context
         
     Returns:
-        Generated response string from the LLM
+        str: Generated SQL query string from the LLM
+        
+    Raises:
+        ValueError: If any required parameter is None, empty, or invalid
+        json.JSONDecodeError: If few_shot_examples is not valid JSON
     """
-    # Get or create a cached LLM instance instead of creating a new one every time
-    # This reuses the same client across multiple function calls for better performance
-    llm = _get_llm_instance(
+    # ========== INPUT VALIDATION ==========
+    # Validate that all required parameters are provided and not None
+    # This prevents cryptic errors later in the function execution
+    if user_query is None:
+        raise ValueError("user_query parameter cannot be None")
+    if api_key is None:
+        raise ValueError("api_key parameter cannot be None")
+    if db_schema is None:
+        raise ValueError("db_schema parameter cannot be None")
+    if few_shot_examples is None:
+        raise ValueError("few_shot_examples parameter cannot be None")
+    
+    # Validate that string parameters are not empty or just whitespace
+    # strip() removes leading/trailing whitespace, then we check if anything remains
+    if not user_query.strip():
+        raise ValueError("user_query cannot be empty or contain only whitespace")
+    if not api_key.strip():
+        raise ValueError("api_key cannot be empty or contain only whitespace")
+    if not db_schema.strip():
+        raise ValueError("db_schema cannot be empty or contain only whitespace")
+    if not few_shot_examples.strip():
+        raise ValueError("few_shot_examples cannot be empty or contain only whitespace")
+    
+    # Validate that few_shot_examples is valid JSON
+    # This catches malformed JSON early before it causes issues in the prompt
+    try:
+        # Attempt to parse the JSON string to verify it's valid
+        json.loads(few_shot_examples)
+    except json.JSONDecodeError as e:
+        # If JSON parsing fails, raise a descriptive error with details
+        raise ValueError(f"few_shot_examples must be valid JSON string. Error: {str(e)}")
+    
+    # Additional validation: Check that user_query has reasonable length
+    # Prevents excessively long queries that could cause performance issues
+    MAX_QUERY_LENGTH = 5000  # Maximum characters allowed in user query
+    if len(user_query) > MAX_QUERY_LENGTH:
+        raise ValueError(f"user_query exceeds maximum length of {MAX_QUERY_LENGTH} characters")
+    
+    # Additional validation: Check that db_schema has reasonable length
+    MAX_SCHEMA_LENGTH = 100000  # Maximum characters allowed in schema
+    if len(db_schema) > MAX_SCHEMA_LENGTH:
+        raise ValueError(f"db_schema exceeds maximum length of {MAX_SCHEMA_LENGTH} characters")
+    
+    # Log successful validation for debugging and monitoring
+    logger.debug(f"Input validation passed for user_query: '{user_query[:50]}...'")
+    # ========== END INPUT VALIDATION ==========
+    
+    # Create a new LLM instance for generating the SQL query
+    # Model: gemini-2.5-flash-lite - Fast and efficient for SQL generation
+    # Temperature: 0.5 - Balanced between deterministic and creative responses
+    llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash-lite",
-        api_key=api_key,
+        google_api_key=api_key,
         temperature=0.5
     )
     
@@ -124,26 +137,78 @@ def generate_sql_query(user_query: str, api_key: str, db_schema: str, few_shot_e
     return response.content
 
 
-def generate_ai_answer(user_query: str, results_df: pd.DataFrame, api_key: str) -> str:
+def generate_ai_answer(
+    user_query: str, 
+    results_df: pd.DataFrame, 
+    api_key: str
+) -> str:
     """
     Generate an AI answer including user query and query results context.
+    
+    Args:
+        user_query (str): The original natural language query from the user
+        results_df (pd.DataFrame): The query results as a pandas DataFrame
+        api_key (str): Your Google AI API key for authentication
+    
+    Returns:
+        str: Natural language summary of the query results
+        
+    Raises:
+        ValueError: If any required parameter is None, empty, or invalid
+        TypeError: If results_df is not a pandas DataFrame
     """
-    # Get or create a cached LLM instance to avoid recreating the client
-    # This uses the same caching mechanism as generate_sql_query for consistency
-    llm = _get_llm_instance(
-        model="gemini-2.5-flash",
-        api_key=api_key,
+    # ========== INPUT VALIDATION ==========
+    # Validate that all required parameters are provided and not None
+    if user_query is None:
+        raise ValueError("user_query parameter cannot be None")
+    if results_df is None:
+        raise ValueError("results_df parameter cannot be None")
+    if api_key is None:
+        raise ValueError("api_key parameter cannot be None")
+    
+    # Validate that string parameters are not empty or just whitespace
+    if not user_query.strip():
+        raise ValueError("user_query cannot be empty or contain only whitespace")
+    if not api_key.strip():
+        raise ValueError("api_key cannot be empty or contain only whitespace")
+    
+    # Validate that results_df is actually a pandas DataFrame
+    # Using isinstance() to ensure type safety
+    if not isinstance(results_df, pd.DataFrame):
+        raise TypeError(f"results_df must be a pandas DataFrame, got {type(results_df).__name__}")
+    
+    # Validate that the DataFrame is not empty
+    # An empty DataFrame would not provide meaningful context for the AI
+    if results_df.empty:
+        raise ValueError("results_df cannot be an empty DataFrame")
+    
+    # Additional validation: Check that user_query has reasonable length
+    MAX_QUERY_LENGTH = 5000  # Maximum characters allowed in user query
+    if len(user_query) > MAX_QUERY_LENGTH:
+        raise ValueError(f"user_query exceeds maximum length of {MAX_QUERY_LENGTH} characters")
+    
+    # Log successful validation for debugging
+    logger.debug(f"Input validation passed for generate_ai_answer function")
+    # ========== END INPUT VALIDATION ==========
+    
+    # Create a new LLM instance for generating the natural language answer
+    # Model: gemini-2.5-flash-lite - Fast and efficient for text summarization
+    # Temperature: 0.5 - Balanced between deterministic and creative responses
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash-lite",
+        google_api_key=api_key,
         temperature=0.5
     )
     
     prompt = """
-    You are a crypto data analyst. You have experience and knowledge in blockchain data analysis.
+    You are a crypto data analyst. You have experience and domain knowledge in blockchain data analysis.
     You are given a user query and a results dataframe. You need to summarize results take into account user query and results.
     User query: {user_query}
     Results: {results_df}
     The answer should be in a natural language format. 
     No introduction sentence.
     Be specific and to the point.
+    Do not rewrite results, but summarize them in a natural language format. Add some insights and observations based on the results if possible.
     If date was not specified in user query, assume the most recent date period that makes sense for the query and write in answer that date was not specified so latest date period was used.
     """
 
@@ -158,19 +223,87 @@ def generate_ai_answer(user_query: str, results_df: pd.DataFrame, api_key: str) 
     
     return response.content
 
-def save_successful_query(query_name: str, query_sql: str, expected_result: pd.DataFrame, notes: str) -> str:
+def save_successful_query(
+    query_name: str, 
+    query_sql: str, 
+    expected_result: pd.DataFrame, 
+    notes: str
+) -> None:
     """
-    Save successful query as example in eth_mainnet_sql_fewshots.json file
+    Save successful query as example in eth_mainnet_sql_fewshots.json file.
+    
+    Args:
+        query_name (str): Descriptive name for the query (user's natural language query)
+        query_sql (str): The SQL query that was successfully executed
+        expected_result (pd.DataFrame): DataFrame containing the query results (first 5 rows saved)
+        notes (str): Additional notes or context about the query (AI-generated summary)
+    
+    Returns:
+        None: This function saves to file and does not return a value
+        
+    Raises:
+        ValueError: If any required parameter is None, empty, or invalid
+        TypeError: If expected_result is not a pandas DataFrame
     """
+    # ========== INPUT VALIDATION ==========
+    # Validate that all required parameters are provided and not None
+    if query_name is None:
+        raise ValueError("query_name parameter cannot be None")
+    if query_sql is None:
+        raise ValueError("query_sql parameter cannot be None")
+    if expected_result is None:
+        raise ValueError("expected_result parameter cannot be None")
+    if notes is None:
+        raise ValueError("notes parameter cannot be None")
+    
+    # Validate that string parameters are not empty or just whitespace
+    if not query_name.strip():
+        raise ValueError("query_name cannot be empty or contain only whitespace")
+    if not query_sql.strip():
+        raise ValueError("query_sql cannot be empty or contain only whitespace")
+    if not notes.strip():
+        raise ValueError("notes cannot be empty or contain only whitespace")
+    
+    # Validate that expected_result is actually a pandas DataFrame
+    if not isinstance(expected_result, pd.DataFrame):
+        raise TypeError(f"expected_result must be a pandas DataFrame, got {type(expected_result).__name__}")
+    
+    # Validate that the DataFrame is not empty
+    # We need at least some data to save as an example
+    if expected_result.empty:
+        raise ValueError("expected_result cannot be an empty DataFrame")
+    
+    # Validate that the DataFrame has at least one column
+    # A DataFrame without columns wouldn't be a meaningful example
+    if len(expected_result.columns) == 0:
+        raise ValueError("expected_result must have at least one column")
+    
+    # Additional validation: Check string lengths to prevent unreasonably large data
+    MAX_NAME_LENGTH = 500  # Maximum characters for query name
+    MAX_SQL_LENGTH = 50000  # Maximum characters for SQL query
+    MAX_NOTES_LENGTH = 5000  # Maximum characters for notes
+    
+    if len(query_name) > MAX_NAME_LENGTH:
+        raise ValueError(f"query_name exceeds maximum length of {MAX_NAME_LENGTH} characters")
+    if len(query_sql) > MAX_SQL_LENGTH:
+        raise ValueError(f"query_sql exceeds maximum length of {MAX_SQL_LENGTH} characters")
+    if len(notes) > MAX_NOTES_LENGTH:
+        raise ValueError(f"notes exceeds maximum length of {MAX_NOTES_LENGTH} characters")
+    
+    # Log successful validation
+    logger.debug(f"Input validation passed for save_successful_query: '{query_name}'")
+    # ========== END INPUT VALIDATION ==========
+    
     logger.info(f"Saving successful query: {query_name} to eth_mainnet_sql_fewshots.json file")
 
-    # load few shot examples from file
-    with open(os.path.join(PROJECT_ROOT, "data", "prompt", "eth_mainnet_sql_fewshots.json"), "r") as file:
+    # load few shot examples from the centralized config path so every module reads the same source
+    with FEWSHOT_FILE.open("r", encoding="utf-8") as file:
         few_shot_examples = json.load(file)
     
     # check if query already in examples
     if any(example["query_name"] == query_name for example in few_shot_examples):
         logger.info(f"Query {query_name} already exists in few shot examples. Skipping save.")
+        return  # Return early to prevent duplicate from being appended
 
     # Get column names as a list of strings
     columns = expected_result.columns.tolist()
@@ -190,7 +323,7 @@ def save_successful_query(query_name: str, query_sql: str, expected_result: pd.D
     })
     
     # save few shot examples to file with indentation for readability
-    with open(os.path.join(PROJECT_ROOT, "data", "prompt", "eth_mainnet_sql_fewshots.json"), "w", encoding="utf-8") as file:
+    with FEWSHOT_FILE.open("w", encoding="utf-8") as file:
         json.dump(few_shot_examples, file, indent=4, ensure_ascii=False)
     
     logger.info(f"Saved successful query: {query_name} to eth_mainnet_sql_fewshots.json file")
