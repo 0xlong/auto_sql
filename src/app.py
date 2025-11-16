@@ -148,12 +148,15 @@ if st.session_state.client is not None:
             st.session_state.feedback_processed = False
 
             # Check if user actually entered a query (not just whitespace)
-            if query.strip():
+            # Use st.session_state["query_editor"] to access the edited query from the text_area widget
+            # This ensures we get the user's edited version, not the original generated query
+            if st.session_state["query_editor"].strip():
                 try:
-                    logger.info(f"Executing SQL query: {query[:100]}...")  # Log first 100 chars
+                    logger.info(f"Executing SQL query: {st.session_state['query_editor'][:20]}...")
                     
                     # Execute the SQL query using the BigQuery client. This sends the query to BigQuery servers
-                    query_job = client.query(query)
+                    # Use st.session_state["query_editor"] to get the edited version from the text_area widget
+                    query_job = client.query(st.session_state["query_editor"])
 
                     # Print all important query job details including cost, performance, and execution details
                     bigquery_sqlrun_details(query_job)
@@ -167,7 +170,8 @@ if st.session_state.client is not None:
                     st.session_state["results_df"] = results_df
                     
                     # Store the executed SQL query for later use in saving examples
-                    st.session_state["executed_query"] = query
+                    # Store the edited query, not the original generated one
+                    st.session_state["executed_query"] = st.session_state["query_editor"]
 
                 except Exception as e:
                     # If query fails (syntax error, permission issue, etc.)
