@@ -1,6 +1,7 @@
 import logging
 import os
 import json
+import re
 from google.oauth2 import service_account
 from google.cloud import bigquery
 
@@ -8,6 +9,46 @@ from google.cloud import bigquery
 # Logging is centrally configured in config.py - this just creates a module-specific logger
 # All log messages from this module will be prefixed with "utils.bigquery_utils"
 logger = logging.getLogger(__name__)
+
+def _fix_json_control_characters(json_string):
+    """
+    Attempt to fix common JSON issues with control characters, especially in private_key fields.
+    
+    This function handles the common problem where literal newlines in the private_key field
+    break JSON parsing. It tries to escape them properly.
+    
+    Args:
+        json_string: The JSON string that may contain control characters
+        
+    Returns:
+        str: The fixed JSON string, or original if no fixes were needed
+    """
+    # Common issue: literal newlines in private_key field need to be escaped
+    # Pattern matches: "private_key": "-----BEGIN...\n...\n...-----END..."
+    # We need to replace literal \n (actual newline characters) with escaped \n (the string "\n")
+    
+    # First, try to find the private_key field and fix newlines within it
+    # This regex finds the private_key value and replaces literal newlines with escaped ones
+    # Pattern explanation:
+    # - "private_key"\s*:\s*" - matches "private_key": "
+    # - (.*?) - captures the key content (non-greedy)
+    # - " - matches the closing quote
+    pattern = r'("private_key"\s*:\s*")(.*?)(")'
+    
+    def replace_newlines(match):
+        # match.group(1) is the opening: "private_key": "
+        # match.group(2) is the key content
+        # match.group(3) is the closing "
+        key_content = match.group(2)
+        # Replace literal newlines with escaped newlines
+        # Also replace literal carriage returns and tabs
+        key_content = key_content.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+        return match.group(1) + key_content + match.group(3)
+    
+    # Apply the fix to the private_key field
+    fixed_json = re.sub(pattern, replace_newlines, json_string, flags=re.DOTALL)
+    
+    return fixed_json
 
 def authenticate_to_bigquery():
     """
@@ -34,10 +75,63 @@ def authenticate_to_bigquery():
             logger.error("❌ GOOGLE_BIGQUERY_CREDENTIALS environment variable is not set")
             return None
         
+        # Clean the credentials string to handle common issues
+        # Strip leading/trailing whitespace that might have been accidentally added
+        # This is important because extra spaces can break JSON parsing
+        bigquery_credentials = bigquery_credentials.strip()
+        
         # Parse the JSON string into a Python dictionary
         # json.loads() converts the string representation into a real dictionary object
         # that we can use with the Google Cloud SDK
-        credentials_dict = json.loads(bigquery_credentials)
+        try:
+            # First attempt: try parsing the JSON as-is
+            credentials_dict = json.loads(bigquery_credentials)
+        except json.JSONDecodeError as json_error:
+            # If parsing fails, check if it's a control character error
+            # Control character errors often happen when literal newlines exist in private_key
+            error_msg = str(json_error).lower()
+            if 'control character' in error_msg or 'invalid' in error_msg:
+                # Try to fix common control character issues
+                logger.warning("⚠️ Detected control character issue, attempting to fix...")
+                try:
+                    # Fix literal newlines in private_key field
+                    fixed_credentials = _fix_json_control_characters(bigquery_credentials)
+                    # Try parsing again with the fixed JSON
+                    credentials_dict = json.loads(fixed_credentials)
+                    logger.info("✅ Successfully fixed JSON control character issues")
+                except json.JSONDecodeError as fix_error:
+                    # If fixing didn't work, provide detailed error information
+                    error_pos = getattr(json_error, 'pos', None)
+                    if error_pos:
+                        # Show context around the error position to help debug
+                        start = max(0, error_pos - 50)
+                        end = min(len(bigquery_credentials), error_pos + 50)
+                        context = bigquery_credentials[start:end]
+                        # Replace actual newlines in context with \n for display
+                        context_display = context.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                        logger.error(f"❌ Invalid JSON in credentials at position {error_pos}: {str(json_error)}")
+                        logger.error(f"   Context around error: ...{context_display}...")
+                        logger.error("   Common fixes:")
+                        logger.error("   1. Ensure all newlines in private_key are escaped as \\n")
+                        logger.error("   2. In Windows PowerShell, use: $env:GOOGLE_BIGQUERY_CREDENTIALS = (Get-Content 'path\\to\\key.json' -Raw)")
+                        logger.error("   3. Or use a .env file with the JSON on a single line (newlines escaped as \\n)")
+                        logger.error("   4. Check for unescaped quotes or special characters")
+                    else:
+                        logger.error(f"❌ Invalid JSON in credentials: {str(json_error)}")
+                    return None
+            else:
+                # For other JSON errors, provide standard error message
+                error_pos = getattr(json_error, 'pos', None)
+                if error_pos:
+                    start = max(0, error_pos - 50)
+                    end = min(len(bigquery_credentials), error_pos + 50)
+                    context = bigquery_credentials[start:end]
+                    context_display = context.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                    logger.error(f"❌ Invalid JSON in credentials at position {error_pos}: {str(json_error)}")
+                    logger.error(f"   Context around error: ...{context_display}...")
+                else:
+                    logger.error(f"❌ Invalid JSON in credentials: {str(json_error)}")
+                return None
         
         # Create Google Cloud credentials object from the dictionary
         # service_account.Credentials is the Google Cloud SDK class that handles authentication
@@ -54,6 +148,7 @@ def authenticate_to_bigquery():
         return client
         
     except json.JSONDecodeError as e:
+        # This catch block handles any remaining JSON decode errors that weren't caught above
         # This happens if the credentials string is not valid JSON
         # Common causes: missing quotes, extra commas, incorrectly escaped characters
         logger.error(f"❌ Invalid JSON in credentials: {str(e)}")

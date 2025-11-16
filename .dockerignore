@@ -1,0 +1,53 @@
+# Files and directories to exclude from Docker build context
+# This makes the Docker build faster and the image smaller
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments (we don't need these in the container)
+auto_sql/
+venv/
+ENV/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git files
+.git/
+.gitignore
+
+# Environment files (we'll use AWS App Runner environment variables instead)
+.env
+.env.local
+
+# Test files (not needed in production)
+tests/
+pytest.ini
+
+# Documentation (not needed in container)
+README.md
+
+# Logs
+*.log
+
+# Credentials (NEVER include these - use environment variables)
+*.json
+!package.json
+!data/prompt/eth_mainnet_sql_fewshots.json
+
+# Streamlit cache
+.streamlit/
+
+
