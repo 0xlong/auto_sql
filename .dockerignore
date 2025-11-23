@@ -28,10 +28,6 @@ Thumbs.db
 .git/
 .gitignore
 
-# Environment files (we'll use AWS App Runner environment variables instead)
-.env
-.env.local
-
 # Test files (not needed in production)
 tests/
 pytest.ini

@@ -99,6 +99,7 @@ else:
 
 # MAIN APP LOGIC
 # if bigquery connection is successful, show the query section
+
 if st.session_state.client is not None:
 
     with st.container():
